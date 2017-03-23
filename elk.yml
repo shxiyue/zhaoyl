@@ -1,0 +1,129 @@
+---
+#自动部署配置,elk
+#
+#主机名
+- hosts: tgtnode
+  #gather_facts: False
+  vars:
+        srcsoftdir: "/home/zhaoyl/open_source/soft/"  #安装源目录
+        desthomedir: "/home/bitmap/elk"  #目标目录
+        elkVersion: "5.2.1"
+        esVersion: "5.2.1"
+        logstashVersion: "5.2.1"
+        kibanaVersion: "5.2.2"
+        jdkVersion: "jdk-8u121-linux-x64"
+  remote_user: bitmap
+  tasks:
+      - name : create-dir
+        file : path={{item}} state=directory mode=0755
+        with_items:
+                - "{{ desthomedir }}"
+                - "{{ desthomedir }}/opt"
+                - "{{ desthomedir }}/conf"
+                - "{{ desthomedir }}/depkit"
+                - "{{ desthomedir }}/logs"
+                - "{{ desthomedir }}/depscript"
+                
+
+#----------------elasticsearch config ----------------------------------
+
+      - name : put-es
+        copy: src={{ srcsoftdir }}/depkit/{{item}}.zip dest={{ desthomedir }}/depkit mode="0755"
+        with_items:
+                - "elasticsearch-{{elkVersion}}"
+        when: 
+                - elasticsearch
+                - ansible_distribution == 'SLES' and ansible_distribution_major_version == "11"
+
+      - name : unzip-elasticsearch
+        command : unzip {{desthomedir}}/depkit/{{item}}.zip -d {{desthomedir}}/opt
+        with_items:
+                - "elasticsearch-{{elkVersion}}"
+        when : elasticsearch
+
+      - name : put-esconfig
+        template: src={{ srcsoftdir }}/conf/{{item}} dest={{desthomedir}}/opt/elasticsearch-{{elkVersion}}/config mode=0755
+        with_items:
+                - "elasticsearch.yml"
+        when: 
+                - elasticsearch
+
+
+      - name : put-elk_init
+        template: src={{ srcsoftdir }}/depscript/{{item}}.sh dest={{ desthomedir }}/depscript/ mode="0755"
+        with_items:
+                - "elk_init"
+        when: 
+                - elasticsearch or kibana or logstash
+
+      - name: start-es
+        shell: sh {{ desthomedir }}/depscript/elk_init.sh elasticsearch start
+        when: logstash or elasticsearch or kibana
+        
+        
+
+#----------------kibana config ----------------------------------
+       
+      - name : put-kibana
+        copy: src={{ srcsoftdir }}/depkit/{{item}}.tar.gz dest={{ desthomedir }}/depkit mode="0755"
+        with_items:
+                - "kibana-{{kibanaVersion}}"
+        when: 
+                - kibana
+                - ansible_distribution == 'SLES' and ansible_distribution_major_version == "11"
+                
+      - name : unzip-kibana
+        command : tar -zxvf {{desthomedir}}/depkit/{{item}}.tar.gz -C {{desthomedir}}/opt
+        with_items:
+                - "kibana-{{kibanaVersion}}"
+        when : kibana    
+        
+      - name : put-kibanaconfig
+        template: src={{ srcsoftdir }}/conf/{{item}} dest={{desthomedir}}/opt/kibana-{{kibanaVersion}}/config mode=0755
+        with_items:
+                - "kibana.yml"
+        when: 
+                - kibana   
+         
+      - name : put-elk_init
+        template: src={{ srcsoftdir }}/depscript/{{item}}.sh dest={{ desthomedir }}/depscript/ mode="0755"
+        with_items:
+                - "elk_init"
+        when: 
+                - elasticsearch or kibana or logstash
+                
+      - name: start-kibana
+        shell: sh {{ desthomedir }}/depscript/elk_init.sh kibana start 5601
+        when: logstash or elasticsearch or kibana      
+                
+                
+#----------------logstash config ----------------------------------
+
+
+      - name : put-logstash
+        copy: src={{ srcsoftdir }}/depkit/{{item}}.zip dest={{ desthomedir }}/depkit mode="0755"
+        with_items:
+                - "logstash-{{logstashVersion}}"
+        when: 
+                - logstash
+                - ansible_distribution == 'SLES' and ansible_distribution_major_version == "11"
+                
+      - name : unzip-logstash
+        command : unzip {{desthomedir}}/depkit/{{item}}.zip -d {{desthomedir}}/opt
+        with_items:
+                - "logstash-{{logstashVersion}}"
+        when : logstash 
+        
+      - name : put-logstashconfig
+        template: src={{ srcsoftdir }}/conf/{{item}} dest={{desthomedir}}/opt/kibana-{{kibanaVersion}}/config mode=0755
+        with_items:
+                - "logstash.yml"
+        when: 
+                - logstash 
+        
+      - name : put-elk_init
+        template: src={{ srcsoftdir }}/depscript/{{item}}.sh dest={{ desthomedir }}/depscript/ mode="0755"
+        with_items:
+                - "elk_init"
+        when: 
+                - elasticsearch or kibana or logstash

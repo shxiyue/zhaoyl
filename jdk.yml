@@ -1,0 +1,72 @@
+---
+#自动部署配置,jdk
+#
+#主机名
+- hosts: jdknode
+  #gather_facts: False
+  vars:
+        srcsoftdir: "/home/zhaoyl/open_source/soft/"  #安装源目录
+        desthomedir: "/home/bitmap/elk"  #目标目录
+        elkVersion: "5.2.1"
+        esVersion: "5.2.1"
+        logstashVersion: "5.2.1"
+        kibanaVersion: "5.2.1"
+        jdkVersion: "jdk-8u121-linux-x64"
+  remote_user: root
+  tasks:
+      - name : create-dir
+        file : path={{item}} state=directory mode=0777
+        with_items:
+                - "{{ desthomedir }}"
+                - "{{ desthomedir }}/opt"
+                - "{{ desthomedir }}/conf"
+                - "{{ desthomedir }}/depkit"
+                - "{{ desthomedir }}/logs"
+                - "{{ desthomedir }}/depscript"
+
+      - name : put-jdk
+        copy: src={{ srcsoftdir }}/depkit/{{jdkVersion}}.tar.gz dest={{ desthomedir }}/depkit mode="u=rwx"
+        with_items:
+                - "jdk-{{jdkVersion}}"
+        when: logstash or elasticsearch or kibana
+
+      - name : put-remove-jdk
+        template: src={{ srcsoftdir }}/depscript/{{item}} dest={{desthomedir}}/depscript/ mode=0755
+        with_items:
+                - "remove_jdk.sh"
+        when: 
+                - logstash or elasticsearch or kibana
+
+
+      - name: remove-jdk
+        shell: sh {{ desthomedir }}/depscript/remove_jdk.sh >> /tmp/remove_jdk_{{ ansible_hostname }}.txt
+        when: logstash or elasticsearch or kibana
+        
+      - name: check-jdkdir
+        file: path=/usr/java state=directory mode=0755
+        
+      - name : unzip-jdk
+        command : tar -zxf {{desthomedir}}/depkit/{{jdkVersion}}.tar.gz -C /usr/java/
+        with_items:
+                - "jdk-{{jdkVersion}}"
+        when: logstash or elasticsearch or kibana
+               
+
+      - name: java-replace
+        lineinfile: dest=/etc/profile backrefs=yes regexp="JAVA_HOME=" line="export JAVA_HOME=/usr/java/jdk1.8.0_121"
+
+      - name: java-replace
+        lineinfile: dest=/etc/profile backrefs=yes regexp="CLASS_PATH=" line="export CLASS_PATH=.:$JAVA_HOME/lib.tools.jar:$JAVA_HOME/lib/dt.jar"
+ 
+      - name : java-replace
+        lineinfile: dest=/etc/profile backrefs=yes regexp="PATH.*\$JAVA_HOME" line="export PATH=$PATH:$JAVA_HOME/bin"
+
+      - name: source-jdk
+        shell: source /etc/profile
+        args: 
+          executable: /bin/bash
+          
+      - name: jdk-version
+        shell: java -version
+        args: 
+          executable: /bin/bash
