@@ -1,0 +1,170 @@
+---
+#自动部署配置,elk
+#
+#主机名
+- hosts: tgtnode
+  #gather_facts: False
+  vars:
+        srcsoftdir: "/home/zhaoyl/open_source/soft/"  #安装源目录
+        desthomedir: "/home/bitmap/elk"  #目标目录
+        elkVersion: "5.2.1"
+        esVersion: "5.2.1"
+        logstashVersion: "5.2.1"
+        kibanaVersion: "5.2.1"
+        jdkVersion: "jdk-8u121-linux-x64"
+        baseuser: "bitmap"
+  remote_user: bitmap
+  tasks:
+      - name : create-dir
+        file : path={{item}} state=directory mode=0755
+        with_items:
+                - "{{ desthomedir }}"
+                - "{{ desthomedir }}/opt"
+                - "{{ desthomedir }}/conf"
+                - "{{ desthomedir }}/depkit"
+                - "{{ desthomedir }}/logs"
+                - "{{ desthomedir }}/depscript"
+
+#      - name : put-jdk
+#        copy: src={{ srcsoftdir }}/depkit/{{jdkVersion}}.tar.gz dest={{ desthomedir }}/depkit mode="u=rwx"
+#        with_items:
+#                - "jdk-{{jdkVersion}}"
+#        when: logstash or elasticsearch or kibana
+
+#      - name : unzip-jdk
+#        command : tar -zxf {{desthomedir}}/depkit/{{jdkVersion}}.tar.gz -C {{ desthomedir }}/opt
+#        with_items:
+#                - "jdk-{{jdkVersion}}"
+#        when: logstash or elasticsearch or kibana
+        
+      - name: java-replace
+        lineinfile: dest=/home/{{ baseuser }}/.profile state=present regexp="JAVA_HOME=" line="export JAVA_HOME={{ desthomedir }}/opt/jdk1.8.0_121"
+        when: ansible_distribution == 'SLES'
+
+      - name: java-replace
+        lineinfile: dest=/home/{{ baseuser }}/.profile state=present regexp="CLASS_PATH=" line="export CLASS_PATH=.:$JAVA_HOME/lib/tools.jar:$JAVA_HOME/lib/dt.jar"
+        when: ansible_distribution == 'SLES'
+ 
+      - name : java-replace
+        lineinfile: dest=/home/{{ baseuser }}/.profile state=present regexp="^PATH.*\$JAVA_HOME" line="export PATH=$PATH:$JAVA_HOME/bin" 
+        when: ansible_distribution == 'SLES'  
+        
+      - name: java-replace
+        lineinfile: dest=/home/{{ baseuser }}/.bash_profile state=present regexp="JAVA_HOME=" line="export JAVA_HOME={{ desthomedir }}/opt/jdk1.8.0_121"
+        when: ansible_distribution == 'RedHat'
+
+      - name: java-replace
+        lineinfile: dest=/home/{{ baseuser }}/.bash_profile state=present regexp="CLASS_PATH=" line="export CLASS_PATH=.:$JAVA_HOME/lib/tools.jar:$JAVA_HOME/lib/dt.jar"
+        when: ansible_distribution == 'RedHat'
+ 
+      - name : java-replace
+        lineinfile: dest=/home/{{ baseuser }}/.bash_profile state=present regexp="^PATH.*\$JAVA_HOME" line="export PATH=$PATH:$JAVA_HOME/bin" 
+        when: ansible_distribution == 'RedHat'
+        
+#----------------elasticsearch config ----------------------------------
+
+      - name : put-es
+        copy: src={{ srcsoftdir }}/depkit/{{item}}.zip dest={{ desthomedir }}/depkit mode="0755"
+        with_items:
+                - "elasticsearch-{{elkVersion}}"
+        when: 
+                - elasticsearch
+                - ansible_distribution == 'SLES' and ansible_distribution_major_version == "11"
+
+      - name : unzip-elasticsearch
+        command : unzip {{desthomedir}}/depkit/{{item}}.zip -d {{desthomedir}}/opt
+        with_items:
+                - "elasticsearch-{{elkVersion}}"
+        when : elasticsearch
+
+      - name : put-esconfig
+        template: src={{ srcsoftdir }}/conf/{{item}} dest={{desthomedir}}/opt/elasticsearch-{{elkVersion}}/config mode=0755
+        with_items:
+                - "elasticsearch.yml"
+        when: 
+                - elasticsearch
+                
+      - name : put-es
+        template: src={{ srcsoftdir }}/conf/{{item}} dest={{desthomedir}}/opt/elasticsearch-{{elkVersion}}/config mode=0755
+        with_items:
+                - "elasticsearch"
+        when: 
+                - elasticsearch
+
+
+      - name : put-elk_init
+        template: src={{ srcsoftdir }}/depscript/{{item}}.sh dest={{ desthomedir }}/depscript/ mode="0755"
+        with_items:
+                - "elk_init"
+        when: 
+                - elasticsearch or kibana or logstash
+
+      - name: start-es
+        shell: sh {{ desthomedir }}/depscript/elk_init.sh elasticsearch start
+        when: logstash or elasticsearch or kibana
+
+#----------------kibana config ----------------------------------
+       
+      - name : put-kibana
+        copy: src={{ srcsoftdir }}/depkit/{{item}}.tar.gz dest={{ desthomedir }}/depkit mode="0755"
+        with_items:
+                - "kibana-{{kibanaVersion}}"
+        when: 
+                - kibana
+                - ansible_distribution == 'SLES' and ansible_distribution_major_version == "11"
+                
+      - name : unzip-kibana
+        command : tar -zxvf {{desthomedir}}/depkit/{{item}}.tar.gz -C {{desthomedir}}/opt
+        with_items:
+                - "kibana-{{kibanaVersion}}"
+        when : kibana    
+        
+      - name : put-kibanaconfig
+        template: src={{ srcsoftdir }}/conf/{{item}} dest={{desthomedir}}/opt/kibana-{{kibanaVersion}}/config mode=0755
+        with_items:
+                - "kibana.yml"
+        when: 
+                - kibana   
+         
+      - name : put-elk_init
+        template: src={{ srcsoftdir }}/depscript/{{item}}.sh dest={{ desthomedir }}/depscript/ mode="0755"
+        with_items:
+                - "elk_init"
+        when: 
+                - elasticsearch or kibana or logstash
+                
+      - name: start-kibana
+        shell: sh {{ desthomedir }}/depscript/elk_init.sh kibana start 5601
+        when: logstash or elasticsearch or kibana
+        
+        
+#----------------logstash config ----------------------------------
+
+
+      - name : put-logstash
+        copy: src={{ srcsoftdir }}/depkit/{{item}}.zip dest={{ desthomedir }}/depkit mode="0755"
+        with_items:
+                - "logstash-{{logstashVersion}}"
+        when: 
+                - logstash
+                - ansible_distribution == 'SLES' and ansible_distribution_major_version == "11"
+                
+      - name : unzip-logstash
+        command : unzip {{desthomedir}}/depkit/{{item}}.zip -d {{desthomedir}}/opt
+        with_items:
+                - "logstash-{{logstashVersion}}"
+        when : logstash 
+        
+      - name : put-logstashconfig
+        template: src={{ srcsoftdir }}/conf/{{item}} dest={{desthomedir}}/opt/kibana-{{kibanaVersion}}/config mode=0755
+        with_items:
+                - "logstash.yml"
+        when: 
+                - logstash 
+        
+      - name : put-elk_init
+        template: src={{ srcsoftdir }}/depscript/{{item}}.sh dest={{ desthomedir }}/depscript/ mode="0755"
+        with_items:
+                - "elk_init"
+        when: 
+                - elasticsearch or kibana or logstash
